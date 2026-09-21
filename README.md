@@ -11,7 +11,7 @@ Workshop intermedio de Ansible para SysAdmins, SREs y Admins Linux de TELCEL. En
 
 - **Cliente:** TELCEL
 - **Duración:** 27 horas (9 sesiones x 3h)
-- **Fecha inicio:** 27 Septiembre 2026
+- **Fecha inicio:** 22 Septiembre 2026
 - **Lab:** Podman Compose - Rocky 9 / RHEL
 - **Usuario lab:** `ansible / linux123`
 
