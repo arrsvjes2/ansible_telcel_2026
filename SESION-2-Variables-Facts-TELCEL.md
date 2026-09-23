@@ -158,6 +158,18 @@ datacenter = CDMX-01
 owner = noc-telcel
 EOF
 ```
+**para un server diferente (servere por ejemplo)**
+```bash
+sudo mkdir -p /etc/ansible/facts.d/
+sudo tee /etc/ansible/facts.d/telcel.fact <<'EOF'
+[general]
+telcel_env = dev
+telcel_role = database
+patch_level = 2025.09.15
+datacenter = CDMX-02
+owner = noc-telcel
+EOF
+```
 
 Lectura:
 ```bash
