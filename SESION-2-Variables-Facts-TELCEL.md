@@ -368,7 +368,12 @@ db_host={{ hostvars[db_primary_host]['ansible_facts']['default_ipv4']['address']
           # END ANSIBLE
         marker: "# {mark} TELCEL LAB"
 ```
-
+```bash
+ansible-playbook --syntax-check session2-caso4.yml
+ansible-lint session2-caso4.yml
+ansible-playbook session2-caso4.yml --check
+ansible-playbook session2-caso4.yml
+```
 ### 13.6 Caso de Uso #5 - inventory_dir para rutas seguras
 
 ```yaml
@@ -449,7 +454,7 @@ pip3 install ansible-lint --user
 ~/.local/bin/ansible-lint --version
 
 # Agrégalo al PATH en ~/.bashrc
-```bash
+
 dnf install -y python3-pip
 # Opción recomendada - pipx (aislado, no rompe ansible-core)
 pip3 install pipx
