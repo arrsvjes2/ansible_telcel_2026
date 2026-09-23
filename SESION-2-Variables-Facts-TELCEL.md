@@ -244,7 +244,7 @@ ansible-inventory --host servera --yaml
 ```
 
 ```bash
-ansible-playbook playbooks/session2-setup-facts.yml --diff
+ansible-playbook playbooks/session2-setup-facts.yml --diff # en caso de requerir escalacion de privilegios agregar -K
 ansible all -m setup -a "filter=ansible_local"
 ```
 
