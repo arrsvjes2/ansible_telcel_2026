@@ -31,6 +31,8 @@ group_vars/all: ntp_server: time.telcel.com
 group_vars/web: http_port: 8080
 group_vars/db: http_port: 5432
 host_vars/servera: http_port: 8081  # excepción
+site.yaml/http_port: 8082
+ansible-playbook site.yaml -e http_port=80
 ```
 
 ---
