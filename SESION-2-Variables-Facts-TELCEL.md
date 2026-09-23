@@ -327,7 +327,18 @@ db_host={{ hostvars[db_primary_host]['ansible_facts']['default_ipv4']['address']
 
 ### 13.3 Caso de Uso #2 - group_names (* Complementar)
 
+Se utiliza en este ejemplo la variable magica "group_names" para identificar/condicionar basado en grupos.
+
+**En el nodo de control crear el playbook session2-caso3.yml:**
+```bash
+vi session2-caso3.yml
+```
+
 ```yaml
+
+- debug:
+    msg: "group_names: {{ group_names }}"
+
 - debug:
     msg: "Soy web con puerto {{ http_port }}"
   when: "'web' in group_names"
