@@ -333,7 +333,6 @@ Se utiliza en este ejemplo la variable magica "group_names" para identificar/con
 ```bash
 vi session2-caso2.yml
 ```
-
 ```yaml
 
 ---
@@ -355,7 +354,15 @@ vi session2-caso2.yml
         - "'lab' in group_names"
 
 ```
-
+```bash
+mkdir templates
+vi templates/web-lab.conf.j2
+```
+```yaml
+web_host={{ inventory_hostname }} port={{ http_port }}
+db_primary={{ groups['db'][0] }} db_ip={{ hostvars[groups['db'][0]]['ansible_host'] }}
+my_groups={{ group_names | join(',') }}
+```
 ### 13.4 Caso de Uso #3 - inventory_hostname vs ansible_hostname
 
 ```yaml
