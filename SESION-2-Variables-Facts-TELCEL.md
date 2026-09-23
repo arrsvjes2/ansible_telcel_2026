@@ -325,7 +325,7 @@ db_host={{ hostvars[db_primary_host]['ansible_facts']['default_ipv4']['address']
 - Generar cluster config con lista de todos los nodos web
 - Balanceador necesita lista de backends
 
-### 13.3 Caso de Uso #2 - group_names
+### 13.3 Caso de Uso #2 - group_names (* Complementar)
 
 ```yaml
 - debug:
