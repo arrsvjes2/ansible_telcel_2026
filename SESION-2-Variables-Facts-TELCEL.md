@@ -442,4 +442,19 @@ ansible all -a "cat /etc/hosts | grep -A10 TELCEL"
 | ansible_version | dict | Version check |
 | play_hosts | list | Hosts del play actual |
 
+### 13.9 Anexo Instalacion de Ansible Lint
+podman exec -it control bash
+su - ansible
+pip3 install ansible-lint --user
+~/.local/bin/ansible-lint --version
+
+# Agrégalo al PATH en ~/.bashrc
+```bash
+dnf install -y python3-pip
+# Opción recomendada - pipx (aislado, no rompe ansible-core)
+pip3 install pipx
+echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc
+source ~/.bashrc
+ansible-lint --version
+
 **Próxima: Sesión 3 - Tasks, Handlers y Notify**
