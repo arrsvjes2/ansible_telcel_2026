@@ -206,8 +206,11 @@ ansible all -m debug -a "var=ansible_local.telcel.general.telcel_env"
 
 Ejecución segura:
 ```bash
+ansible-playbook playbooks/session2-variables.yml --syntax-check
+ansible-lint playbooks/session2-variables
+# corregir calidad de codigo
 ansible-playbook playbooks/session2-variables.yml --check --diff
-ansible-playbook playbooks/session2-variables.yml --diff
+ansible-playbook playbooks/session2-variables.yml --diff # ejecutar
 ```
 
 ---
