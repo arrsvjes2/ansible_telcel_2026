@@ -331,24 +331,29 @@ Se utiliza en este ejemplo la variable magica "group_names" para identificar/con
 
 **En el nodo de control crear el playbook session2-caso3.yml:**
 ```bash
-vi session2-caso3.yml
+vi session2-caso2.yml
 ```
 
 ```yaml
 
-- debug:
-    msg: "group_names: {{ group_names }}"
+---
+- name: caso 2
+  hosts: all
+  tasks:
+    - debug:
+        msg: "group_names: {{ group_names }}"
 
-- debug:
-    msg: "Soy web con puerto {{ http_port }}"
-  when: "'web' in group_names"
+    - debug:
+        msg: "Soy web con puerto {{ http_port }}"
+      when: "'web' in group_names"
 
-- template:
-    src: web-lab.conf.j2
-    dest: /etc/app.conf
-  when: 
-    - "'web' in group_names"
-    - "'lab' in group_names"
+    - template:
+        src: web-lab.conf.j2
+        dest: /etc/app.conf
+      when: 
+        - "'web' in group_names"
+        - "'lab' in group_names"
+
 ```
 
 ### 13.4 Caso de Uso #3 - inventory_hostname vs ansible_hostname
