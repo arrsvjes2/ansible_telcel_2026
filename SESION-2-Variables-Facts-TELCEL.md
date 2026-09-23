@@ -126,6 +126,8 @@ ansible-inventory --host serverb --yaml | grep http_port
 
 ```bash
 ansible servera -m setup | head -100
+ansible servera -m setup | less
+
 ```
 
 ```yaml
