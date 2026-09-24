@@ -1,0 +1,17 @@
+- name: Generar /home/ansible/hosts TELCEL con variables mágicas
+  hosts: all
+  become: yes
+  tasks:
+    - file:
+        dest: /home/ansible/hosts
+        state: touch
+
+    - blockinfile:
+        path: /home/ansible/hosts
+        block: |
+          # BEGIN ANSIBLE TELCEL LAB
+          {% for host in groups['lab'] %}
+          {{ hostvars[host]['ansible_facts']['default_ipv4']['address'] }} {{ host }} {{ hostvars[host]['inventory_hostname_short'] }}
+          {% endfor %}
+          # END ANSIBLE
+        marker: "# {mark} TELCEL LAB"
