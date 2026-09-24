@@ -46,6 +46,31 @@ Entender task atómica idempotente, handler con notify/listen, changed_when/fail
     - debug: msg="Config cambió en {{ inventory_hostname }}"
       listen: reload app
 ```
+segunda version:
+```yaml
+- hosts: web
+  tasks:
+    - template:
+        src: telcel-app.conf.j2
+        dest: /tmp/app.conf
+        validate: sh -c "grep -q 'app_port' %s"
+      notify: reload app
+
+    - name: print message
+      debug:
+        msg: "Hello Class"
+
+    - name: print http_port
+      debug:
+        msg: "{{ http_port }}"
+
+  handlers:
+    - command: cat /tmp/app.conf
+      changed_when: false
+      listen: reload app
+    - debug: msg="Config cambió en {{ inventory_hostname }}"
+      listen: reload app
+```
 
 Reglas:
 - `validate` con `grep/cat` (no requiere binario httpd)
