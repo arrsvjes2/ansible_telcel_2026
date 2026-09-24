@@ -377,12 +377,16 @@ my_groups={{ group_names | join(',') }}
 ### 13.5 Caso de Uso #4 - groups para /etc/hosts dinámico
 
 ```yaml
-- name: Generar /etc/hosts TELCEL con variables mágicas
+- name: Generar /home/ansible/hosts TELCEL con variables mágicas
   hosts: all
   become: yes
   tasks:
+    - file:
+        dest: /home/ansible/hosts
+        state: touch
+
     - blockinfile:
-        path: /etc/hosts
+        path: /home/ansible/hosts
         block: |
           # BEGIN ANSIBLE TELCEL LAB
           {% for host in groups['lab'] %}
@@ -390,6 +394,7 @@ my_groups={{ group_names | join(',') }}
           {% endfor %}
           # END ANSIBLE
         marker: "# {mark} TELCEL LAB"
+
 ```
 ```bash
 ansible-playbook --syntax-check session2-caso4.yml
