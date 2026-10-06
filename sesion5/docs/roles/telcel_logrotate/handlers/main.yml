@@ -1,0 +1,10 @@
+---
+- name: show logrotate
+  command: cat /etc/logrotate.d/telcel
+  changed_when: false
+  listen: show logrotate
+
+- name: Listar logs
+  shell: ls -lh /var/log/telcel/ && cat /tmp/logrotate-done 2>/dev/null || echo "No postrotate"
+  changed_when: false
+  listen: show logrotate

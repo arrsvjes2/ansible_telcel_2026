@@ -1,0 +1,38 @@
+---
+- name: Crear directorios TELCEL (offline)
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop: "{{ telcel_app_files }}"
+
+- name: Crear index.html dummy
+  copy:
+    content: |
+      <html><body>
+      <h1>TELCEL LAB {{ inventory_hostname }}</h1>
+      <p>Host: {{ inventory_hostname }}</p>
+      <p>Grupos: {{ group_names | join(',') }}</p>
+      </body></html>
+    dest: "{{ app_docroot }}/index.html"
+    mode: '0644'
+
+- name: Configurar app.conf
+  template:
+    src: telcel-app.conf.j2
+    dest: /etc/telcel/app.conf
+    mode: '0644'
+    backup: yes
+    validate: sh -c "grep -q 'app_port' %s && cat %s"
+  notify: reload telcel_app
+  register: app_conf_result
+
+- name: Configurar httpd conf (offline)
+  template:
+    src: telcel-httpd.conf.j2
+    dest: /etc/httpd/conf.d/telcel.conf
+    mode: '0644'
+    backup: yes
+    validate: sh -c "grep -q 'Listen' %s && cat %s"
+  notify: reload telcel_app
+  register: web_conf_result

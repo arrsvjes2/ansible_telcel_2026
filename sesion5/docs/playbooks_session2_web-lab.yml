@@ -1,0 +1,30 @@
+---
+- name: Sesion 2 - 13.3 Demo web-lab.conf.j2 con variables magicas
+  hosts: all
+  gather_facts: yes
+  vars:
+    telcel_environment: lab
+
+  tasks:
+    - name: Mostrar en que grupos estoy
+      debug:
+        msg: "Soy {{ inventory_hostname }} en grupos {{ group_names }} y mi puerto es {{ http_port | default(8080) }}"
+
+    - name: Generar config solo si estoy en web Y lab
+      template:
+        src: templates/web-lab.conf.j2
+        dest: /tmp/web-lab.conf
+        mode: '0644'
+      when:
+        - "'web' in group_names"
+        - "'lab' in group_names or telcel_environment == 'lab'"
+
+    - name: Mostrar config generada
+      command: cat /tmp/web-lab.conf
+      register: conf_out
+      changed_when: false
+      when: "'web' in group_names"
+
+    - debug:
+        var: conf_out.stdout_lines
+      when: "'web' in group_names"

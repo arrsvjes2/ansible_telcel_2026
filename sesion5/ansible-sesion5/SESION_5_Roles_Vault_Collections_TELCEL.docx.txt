@@ -1,0 +1,562 @@
+Workshop Ansible Intermedio - Sesión 5
+
+Roles, Collections y Ansible Vault | 3 Horas | TELCEL | HPE A&PS
+
+100% Offline Container Friendly - Sin Internet - Sin Init
+
+Objetivo: Al finalizar: entender estructura de roles, crear roles telcel_app y telcel_logrotate desde LABs Sesión 3, usar ansible-galaxy offline, cifrar secrets con ansible-vault, y orquestar todo con site.yml. TODO funciona sin internet y sin systemd - compatible podman/docker.
+
+1. Roles - Por qué y estructura
+
+Un playbook gigante de 200 tareas no es mantenible. Un role separa responsabilidades.
+
+Estructura estándar TELCEL:
+roles/telcel_app/
+  tasks/main.yml      # Tareas principales
+  handlers/main.yml   # Handlers del role
+  templates/          # telcel-app.conf.j2, telcel-httpd.conf.j2
+  files/              # index.html estático si aplica
+  vars/main.yml       # Variables fijas del role (alta precedencia)
+  defaults/main.yml   # Defaults (baja precedencia, sobreescribibles)
+  meta/main.yml       # Dependencias
+
+roles/telcel_logrotate/
+  tasks/main.yml
+  handlers/main.yml
+  templates/logrotate-telcel.j2
+
+Crear role sin internet:
+ansible-galaxy role init roles/telcel_app --offline
+# --offline evita que galaxy intente descargar desde galaxy.ansible.com
+
+Precedencia (de menor a mayor):
+defaults/main.yml < group_vars/all.yml < host_vars/ < vars/main.yml < extra_vars (-e)
+
+
+2. ansible-galaxy y Collections - Offline
+
+# Crear role
+ansible-galaxy role init roles/telcel_app --offline
+ansible-galaxy role init roles/telcel_logrotate --offline
+
+# Collections: en offline no puedes galaxy collection install community.general
+# Alternativa TELCEL offline:
+# 1. Descargar en tu laptop con internet: ansible-galaxy collection download community.general
+# 2. Copiar tar.gz a control: ansible-galaxy collection install community-general-*.tar.gz -p ./collections
+# 3. En ansible.cfg: collections_paths = ./collections
+
+# En este lab usaremos solo roles propios, 0 dependencias externas = 100% offline
+
+# ansible.cfg TELCEL Sesión 5:
+[defaults]
+roles_path = ./roles
+collections_path = ./collections
+inventory = inventory/hosts
+host_key_checking = False
+
+
+3. Ansible Vault - Secrets para TELCEL
+
+Vault cifra variables sensibles: db_password, api_key, noc_password
+
+Comandos clave:
+# Crear vault
+ansible-vault create group_vars/web/vault.yml
+# Contenido:
+vault_db_password: "Telcel2025!"
+vault_api_key: "abc123xyz"
+
+# Editar
+ansible-vault edit group_vars/web/vault.yml
+
+# Ver
+ansible-vault view group_vars/web/vault.yml
+
+# Encriptar archivo existente
+ansible-vault encrypt group_vars/web/vault.yml
+
+# Ejecutar playbook con vault
+ansible-playbook site.yml --ask-vault-pass
+ansible-playbook site.yml --vault-password-file ~/.vault_pass
+ansible-playbook site.yml --vault-id dev@~/.vault_pass
+
+# Usar en templates - NO hardcodear:
+db_password={{ vault_db_password }}
+
+# Buena práctica TELCEL:
+# - vault.yml NUNCA en git sin cifrar
+# - vault password en archivo ~/.vault_pass con chmod 600
+# - Un vault por entorno: group_vars/lab/vaul
+
+t.yml, group_vars/prod/vault.yml
+
+
+4. LAB 5.1 - Role telcel_app desde Sesión 3 (45 min) - Offline
+
+# Paso 1: Crear role
+cd ~/taller-ansible-telcel
+ansible-galaxy role init roles/telcel_app --offline
+
+# Paso 2: Estructura
+roles/telcel_app/
+  tasks/main.yml
+  handlers/main.yml
+  templates/telcel-app.conf.j2
+  templates/telcel-httpd.conf.j2
+  defaults/main.yml
+  vars/main.yml
+
+# roles/telcel_app/defaults/main.yml - Baja precedencia (sobreescribible)
+app_port: 8080
+app_env: lab
+app_docroot: /var/www/telcel
+app_admin: noc@telcel.com.mx
+app_version: 1.2.3
+company: TELCEL
+
+# roles/telcel_app/vars/main.yml - Alta precedencia (fijo del role)
+telcel_app_files:
+  - /etc/telcel
+  - /var/www/telcel
+  - /var/log/telcel
+  - /etc/httpd/conf.d
+
+# roles/telcel_app/templates/telcel-app.conf.j2 - 3 líneas mínimo offline
+app_host={{ inventory_hostname }}
+app_port={{ app_port }}
+app_env={{ app_env }}
+
+# roles/telcel_app/templates/telcel-httpd.conf.j2 - Completo offline
+Listen {{ app_port }}
+ServerName {{ app_server_name | default(inventory_hostname + '.telcel.lab') }}
+DocumentRoot {{ app_docroot }}
+
+<VirtualHost *:{{ app_port }}>
+    ServerAdmin {{ app_admin }}
+    DocumentRoot {{ app_docroot }}
+    ErrorLog /var/log/telcel/error.log
+    CustomLog /var/log/telcel/access.log combined
+    # Host: {{ inventory_hostname }} - {{ ansible_host }}
+    # Grupos: {{ group_names | join(',') }}
+</VirtualHost>
+
+# roles/telcel_app/tasks/main.yml - 100% Offline sin dnf sin systemd
+---
+- name: Crear directorios TELCEL (offline)
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop: "{{ telcel_app_files }}"
+
+- name: Crear index.html dummy (offline)
+  copy:
+    content: |
+      <html><body>
+      <h1>TELCEL LAB {{ inventory_hostname }}</h1>
+      <p>Host: {{ inventory_hostname }} - {{ ansible_facts['default_ipv4']['address'] | default(ansible_host) }}</p>
+      <p>Grupos: {{ group_names | join(',') }}</p>
+      <p>Version: {{ app_version }} - Env: {{ app_env }}</p>
+      </body></html>
+    dest: "{{ app_docroot }}/index.html"
+    mode: '0644'
+
+- name: Configurar app.conf desde template (offline)
+  template:
+    src: telcel-app.conf.j2
+    dest: /etc/telcel/app.conf
+    mode: '0644'
+    backup: yes
+    validate: sh -c "grep -q 'app_port' %s && cat %s"
+  notify: reload telcel_app
+  register: app_conf_result
+
+- name: Configurar httpd conf (simula httpd sin paquete) (offline)
+  template:
+    src: telcel-httpd.conf.j2
+    dest: /etc/httpd/conf.d/telcel.conf
+    mode: '0644'
+    backup: yes
+    validate: sh -c "grep -q 'Listen' %s && cat %s"
+  notify: reload telcel_app
+  register: web_conf_result
+
+- name: Validar configs (offline)
+  shell: grep -q "^app_port" /etc/telcel/app.conf && grep -q "^Listen" /etc/httpd/conf.d/telcel.conf && echo "OK"
+  changed_when: false
+  when: app_conf_result.changed or web_conf_result.changed
+
+# roles/telcel_app/handlers/main.yml - Offline sin systemd
+---
+- name: reload telcel_app
+  command: cat /etc/telcel/app.conf
+  changed_when: false
+
+listen: reload telcel_app
+
+- name: Mostrar nueva web config
+  command: cat /etc/httpd/conf.d/telcel.conf
+  changed_when: false
+  listen: reload telcel_app
+
+- name: Debug role telcel_app aplicado
+  debug:
+    msg: "Role telcel_app aplicado en {{ inventory_hostname }}:{{ app_port }} Env={{ app_env }}"
+  listen: reload telcel_app
+
+# playbooks/test-telcel-app.yml para probar role solo
+---
+- name: Probar role telcel_app offline
+  hosts: web
+  become: yes
+  gather_facts: yes
+  roles:
+    - telcel_app
+
+# Ejecución:
+# ansible-playbook playbooks/test-telcel-app.yml --check --diff --limit servera
+# ansible-playbook playbooks/test-telcel-app.yml --diff
+# ansible web -a "cat /etc/telcel/app.conf && cat /etc/httpd/conf.d/telcel.conf"
+
+
+5. LAB 5.2 - Role telcel_logrotate (30 min) - Offline
+
+# Crear role
+ansible-galaxy role init roles/telcel_logrotate --offline
+
+# roles/telcel_logrotate/defaults/main.yml
+log_path: /var/log/telcel/*.log
+log_rotate: 14
+app_user: ansible
+
+# roles/telcel_logrotate/templates/logrotate-telcel.j2 - SIN systemctl
+{{ log_path }} {
+    daily
+    rotate {{ log_rotate }}
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 {{ app_user }} {{ app_user }}
+    postrotate
+        echo "Logs rotados {{ inventory_hostname }}" > /tmp/logrotate-done
+    endscript
+}
+
+# roles/telcel_logrotate/tasks/main.yml - Offline
+---
+- name: Crear dir /var/log/telcel
+  file:
+    path: /var/log/telcel
+    state: directory
+    mode: '0755'
+    owner: "{{ app_user }}"
+
+- name: Crear logs dummy
+  copy:
+    content: "Log {{ inventory_hostname }} {{ ansible_date_time.iso8601 | default('now') }} Env {{ app_env | default('lab') }}"
+    dest: "/var/log/telcel/app-{{ inventory_hostname }}.log"
+    mode: '0644'
+
+- name: Instalar logrotate config (offline)
+  template:
+    src: logrotate-telcel.j2
+    dest: /etc/logrotate.d/telcel
+    mode: '0644'
+    validate: sh -c "grep -q 'daily' %s && cat %s"
+  notify: show logrotate
+  register: logrotate_result
+
+- name: Validar config
+  command: cat /etc/logrotate.d/telcel
+  changed_when: false
+  register: logrotate_debug
+
+- name: Debug validación
+  debug:
+    var: logrotate_debug.stdout_lines
+
+- name: Simular rotación sin binario logrotate
+  shell: cp /var/log/telcel/app-{{ inventory_hostname }}.log /var/log/telcel/app-{{ inventory_hostname }}.log.1 && echo "" > /var/log/telcel/app-{{ inventory_hostname }}.log && ls -lh /var/log/telcel/
+  changed_when: false
+  when: logrotate_result.changed
+
+# roles/telcel_logrotate/handlers/main.yml
+---
+- name: show logrotate
+  command: cat /etc/logrotate.d/telcel
+  changed_when: false
+  listen: show logrotate
+
+- name: Listar logs
+  shell: ls -lh /var/log/telcel/ && cat /tmp/logrotate-done 2>/dev/null || echo "No postrotate"
+  changed_when: false
+  listen: show logrotate
+
+# playbooks/test-logrotate.yml
+---
+- name: Probar role logrotate offline
+  hosts: all
+  become: yes
+  roles:
+    - telcel_logrotate
+
+
+6. LAB 5.3 - Ansible Vault para TELCEL (30 min)
+
+# Paso 1: Crear estructura
+
+vault
+mkdir -p inventory/group_vars/web
+mkdir -p inventory/group_vars/all
+
+# Paso 2: Crear password file (chmod 600)
+echo "TelcelVault2025" > ~/.vault_pass
+chmod 600 ~/.vault_pass
+
+# Paso 3: Crear vault cifrado
+ansible-vault create --vault-password-file ~/.vault_pass inventory/group_vars/web/vault.yml
+# Dentro del editor:
+vault_db_password: "SuperSecretDB2025!"
+vault_api_key: "TELCEL-API-XYZ-123"
+vault_noc_password: "N0cT3lc3l2025"
+vault_app_secret: "app-secret-lab-2025"
+
+# Paso 4: Referenciar vault en vars
+# inventory/group_vars/web/web.yml (sin cifrar)
+app_port: 8080
+app_env: lab
+db_password: "{{ vault_db_password }}"
+api_key: "{{ vault_api_key }}"
+
+# Paso 5: Usar en templates - roles/telcel_app/templates/telcel-app.conf.j2
+app_host={{ inventory_hostname }}
+app_port={{ app_port }}
+app_env={{ app_env }}
+# Secret solo visible si tienes vault pass
+db_password={{ vault_db_password }}
+api_key={{ vault_api_key }}
+
+# Paso 6: Template con vault
+# roles/telcel_app/templates/app-secrets.conf.j2
+[secrets]
+db_password={{ vault_db_password }}
+api_key={{ vault_api_key }}
+noc_pass={{ vault_noc_password }}
+
+# Paso 7: Task que usa vault
+- name: Crear secrets config (vault)
+  template:
+    src: app-secrets.conf.j2
+    dest: /etc/telcel/secrets.conf
+    mode: '0600'  # Solo root puede leer
+    owner: root
+  no_log: true  # No mostrar secret en log
+  notify: reload telcel_app
+
+# Paso 8: Ejecutar con vault
+ansible-playbook playbooks/test-telcel-app.yml --vault-password-file ~/.vault_pass --diff --limit servera
+ansible-playbook site.yml --vault-password-file ~/.vault_pass --diff
+
+# Buenas prácticas TELCEL:
+# - group_vars/all/vault.yml para secrets comunes
+# - group_vars/web/vault.yml para secrets de web
+# - .gitignore: *.vault, vault.yml sin cifrar
+# - no_log: true en tasks con secrets
+# - mode: 0600 en archivos con secrets
+
+
+7. LAB 5.4 - site.yml - Orquestación final (30 min)
+
+# site.yml - Playbook maestro TELCEL que usa roles
+---
+- name: Configurar todo TELCEL LAB - Web
+  hosts: web
+  become: yes
+  gather_facts: yes
+
+  pre_tasks:
+    - name: Validar que vault está disponible
+      debug:
+        msg: "Vault OK para {{ inventory_hostname }}, env={{ app_env }}"
+      changed_when: false
+      no_log: false
+
+  roles:
+    - role: telcel_app
+    - role: telcel_logrotate
+
+- name: Configurar todo TELCEL LAB - DB
+  hosts: db
+  become: yes
+  gather_facts: yes
+
+  roles:
+    - role: telcel_logrotate
+    # En prod aquí iría role telcel_db
+
+- name: Configurar todos - MOTD y base
+  hosts: all
+  become: yes
+  tasks:
+    - name: Crear /etc/motd.d/telcel (base)
+      copy:
+        content: |
+          TELCEL LAB - {{ inventory_hostname }}
+          Env: {{ app_env | default('lab') }}
+          Rol: {{ group_names | join(',') }}
+          Managed by Ansible
+        dest: /etc/motd
+        mode: '0644'
+
+# inventory/hosts TELCEL
+[web]
+servera ansible_host=10.10.1.11
+serverb ansible_host=10.10.1.12
+
+[db]
+serverd ansible_host=10.10.1.14
+
+[lab:children]
+web
+db
+
+[lab:vars]
+app_env=lab
+co
+
+mpany=TELCEL
+
+# ansible.cfg final Sesión 5
+[defaults]
+inventory = inventory/hosts
+roles_path = ./roles
+collections_path = ./collections
+host_key_checking = False
+vault_password_file = ~/.vault_pass
+retry_files_enabled = False
+stdout_callback = yaml
+
+# Ejecución final:
+# ansible-playbook site.yml --vault-password-file ~/.vault_pass --check --diff
+# ansible-playbook site.yml --vault-password-file ~/.vault_pass --diff --limit web
+# ansible-playbook site.yml --vault-password-file ~/.vault_pass --diff
+
+# Validación idempotencia:
+# ansible-playbook site.yml --vault-password-file ~/.vault_pass --diff  # 1ra vez changed
+# ansible-playbook site.yml --vault-password-file ~/.vault_pass --diff  # 2da vez 0 changed = OK
+
+# Verificación:
+# ansible web -a "cat /etc/telcel/app.conf && cat /etc/httpd/conf.d/telcel.conf"
+# ansible all -a "cat /etc/logrotate.d/telcel && ls -lh /var/log/telcel/"
+# ansible all -a "cat /etc/motd"
+
+
+8. Tarea Sesión 5 - Reto Final TELCEL
+
+Reto: Crear proyecto final 100% offline con:
+
+1. Role telcel_base:
+   - Crea usuario telcel-admin
+   - Crea /etc/motd con template usando magic vars
+   - defaults: motd_env=lab
+
+2. Role telcel_app con vault:
+   - Usa vault_db_password en template secrets.conf con mode 0600 y no_log:true
+   - 2 templates con notify a mismo handler listen
+
+3. Role telcel_logrotate
+
+4. site.yml que orquesta:
+   - all -> telcel_base
+   - web -> telcel_app + telcel_logrotate
+   - db -> telcel_logrotate
+
+5. Vault:
+   - inventory/group_vars/all/vault.yml con 3 secrets
+   - Usar --vault-password-file
+
+6. Validar:
+   - --check --diff sin cambiar nada en 2da corrida = 0 changed
+   - ansible-vault view funciona
+   - Secrets con mode 0600 y no_log:true
+
+BONUS: Crear role telcel_monitor que instale script /usr/local/bin/telcel-check.sh desde template que haga:
+#!/bin/bash
+echo "TELCEL Check {{ inventory_hostname }} {{ app_env }}"
+cat /etc/telcel/app.conf
+ls -lh /var/log/telcel/
+
+Entregable: Zip de proyecto con roles/, inventory/, site.yml, ansible.cfg, templates, sin binarios ni secrets en claro
+
+
+9. Cheat Sheet Sesión 5
+
+# Roles
+ansible-galaxy role init roles/telcel_app --offline
+ansible-galaxy role list
+
+# Vault
+ansible-vault create group_vars/web/vault.yml --vault-password-file ~/.vault_pass
+ansible-vault edit group_vars/web/vault.yml --vault-password-file ~/.vault_pass
+ansible-vault view group_vars/web/vault.yml --vault-password-file ~/.vault_pass
+ansible-vault encrypt_string 'Secret123' --name 'vault_db_password'
+
+# Ejecución con vault
+ansible-playbook site.yml --vault-password-file ~/.vault_pass --diff
+ansible-playbook site.yml --vault-id dev@~/.vault_pass --diff
+
+# Debug roles
+ansible-playbook site.yml --tags telcel_app --diff --limit servera
+ansible-playbook site.yml --skip-tags telcel_logrotate --diff
+
+# Estructura final TELCEL
+.
+├── ansible.cfg
+├── site.yml
+├── inventory/
+│   ├── hosts
+│   └── group_vars/
+│       ├── all/
+│       │   ├── vars.yml
+│       │   └── vault.yml (cifrado)
+│       └── web/
+│           ├── vars.ym
+
+l
+│           └── vault.yml (cifrado)
+├── roles/
+│   ├── telcel_app/
+│   │   ├── tasks/main.yml
+│   │   ├── handlers/main.yml
+│   │   ├── templates/
+│   │   ├── defaults/main.yml
+│   │   └── vars/main.yml
+│   └── telcel_logrotate/
+└── collections/ (opcional offline)
+
+[DOCX page 1 image attached. Read this image directly to extract content.]
+
+[DOCX page 2 image attached. Read this image directly to extract content.]
+
+[DOCX page 3 image attached. Read this image directly to extract content.]
+
+[DOCX page 4 image attached. Read this image directly to extract content.]
+
+[DOCX page 5 image attached. Read this image directly to extract content.]
+
+[DOCX page 6 image attached. Read this image directly to extract content.]
+
+[DOCX page 7 image attached. Read this image directly to extract content.]
+
+[DOCX page 8 image attached. Read this image directly to extract content.]
+
+[DOCX page 9 image attached. Read this image directly to extract content.]
+
+[DOCX page 10 image attached. Read this image directly to extract content.]
+
+[DOCX page 11 image attached. Read this image directly to extract content.]
+
+[DOCX page 12 image attached. Read this image directly to extract content.]
+
+[DOCX page 13 image attached. Read this image directly to extract content.]

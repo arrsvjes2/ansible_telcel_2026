@@ -1,0 +1,15 @@
+---
+- name: reload telcel_app
+  command: cat /etc/telcel/app.conf
+  changed_when: false
+  listen: reload telcel_app
+
+- name: Mostrar web config
+  command: cat /etc/httpd/conf.d/telcel.conf
+  changed_when: false
+  listen: reload telcel_app
+
+- name: Debug role aplicado
+  debug:
+    msg: "Role telcel_app {{ inventory_hostname }}:{{ app_port }}"
+  listen: reload telcel_app

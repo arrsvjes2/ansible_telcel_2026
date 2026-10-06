@@ -1,0 +1,4 @@
+---
+log_path: /var/log/telcel/*.log
+log_rotate: 14
+app_user: ansible

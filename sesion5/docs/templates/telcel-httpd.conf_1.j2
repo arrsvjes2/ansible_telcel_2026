@@ -1,0 +1,11 @@
+Listen {{ httpd_port }}
+ServerName {{ httpd_server_name }}
+DocumentRoot /var/www/telcel
+
+<VirtualHost *:{{ httpd_port }}>
+    ServerAdmin {{ httpd_server_admin }}
+    ServerName {{ httpd_server_name }}
+    DocumentRoot /var/www/telcel
+    ErrorLog /var/log/httpd/telcel-error.log
+    CustomLog /var/log/httpd/telcel-access.log combined
+</VirtualHost>

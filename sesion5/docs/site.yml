@@ -1,0 +1,27 @@
+---
+- name: Configurar TELCEL Web
+  hosts: web
+  become: yes
+  gather_facts: yes
+  roles:
+    - telcel_app
+    - telcel_logrotate
+
+- name: Configurar TELCEL DB
+  hosts: db
+  become: yes
+  roles:
+    - telcel_logrotate
+
+- name: Configurar Base all
+  hosts: all
+  become: yes
+  tasks:
+    - name: MOTD TELCEL
+      copy:
+        content: |
+          TELCEL LAB - {{ inventory_hostname }}
+          Env: {{ app_env | default('lab') }}
+          Rol: {{ group_names | join(',') }}
+        dest: /etc/motd
+        mode: '0644'

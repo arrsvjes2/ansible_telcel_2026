@@ -1,0 +1,59 @@
+# {{ ansible_managed }}
+# Configuracion TELCEL - Equipo WEB en entorno LAB
+# Generado: {{ ansible_date_time.iso8601 | default('N/A') }}
+# Host: {{ inventory_hostname }} ({{ inventory_hostname_short }})
+# Grupos: {{ group_names | join(', ') }}
+
+[general]
+hostname = {{ inventory_hostname }}
+shortname = {{ inventory_hostname_short }}
+environment = {{ telcel_environment | default(ansible_local.telcel.general.telcel_env | default('lab')) }}
+datacenter = {{ ansible_local.telcel.general.datacenter | default('CDMX-02') }}
+owner = {{ ansible_local.telcel.general.owner | default('noc-telcel') }}
+patch_level = {{ ansible_local.telcel.general.patch_level | default('2025.09.15') }}
+
+[web]
+# Puerto viene de group_vars/web.yml -> 8080, host_vars/servera.yml -> 8081
+port = {{ http_port }}
+service = {{ http_service | default('httpd') }}
+user = {{ app_user | default('telcel_web') }}
+# Solo si estoy en web, muestro mis vecinos web para cluster
+{% if 'web' in group_names %}
+cluster_nodes = {{ groups['web'] | join(',') }}
+cluster_count = {{ groups['web'] | length }}
+{% for node in groups['web'] %}
+# Node {{ loop.index }}: {{ node }} -> {{ hostvars[node]['ansible_facts']['default_ipv4']['address'] | default(hostvars[node]['ansible_host'] | default('10.10.1.11')) }}:{{ hostvars[node]['http_port'] | default(8080) }}
+{% endfor %}
+{% endif %}
+
+[database]
+# Conexion dinamica a DB sin hardcodear IP - usando groups + hostvars (variable magica)
+# Primer DB del grupo db = primario
+primary_host = {{ groups['db'][0] }}
+primary_ip = {{ hostvars[groups['db'][0]]['ansible_facts']['default_ipv4']['address'] | default(hostvars[groups['db'][0]]['ansible_host'] | default('10.10.1.14')) }}
+primary_port = {{ hostvars[groups['db'][0]]['http_port'] | default(5432) }}
+
+# Lista completa de DBs para failover
+{% for db in groups['db'] %}
+db_{{ loop.index }}_host = {{ db }}
+db_{{ loop.index }}_ip = {{ hostvars[db]['ansible_facts']['default_ipv4']['address'] | default(hostvars[db]['ansible_host'] | default('10.10.1.14')) }}
+{% endfor %}
+
+[lab]
+# Info del lab completo usando magic variable groups['lab']
+lab_subnet = 10.10.1.0/24
+control_node = {{ groups['lab'][0] | default('servera') }}
+all_nodes = {{ groups['lab'] | join(',') }}
+{% if inventory_dir is defined %}
+inventory_path = {{ inventory_dir }}/hosts
+{% endif %}
+
+# Debug de variables magicas
+# inventory_file={{ inventory_file }}
+# inventory_dir={{ inventory_dir }}
+# ansible_version={{ ansible_version.full | default('N/A') }}
+
+[security]
+# Hardening solo si estamos en lab (when en playbook ya filtra, pero reforzamos aqui)
+allow_groups = {{ group_names | join(',') }}
+banner_file = /etc/issue.net

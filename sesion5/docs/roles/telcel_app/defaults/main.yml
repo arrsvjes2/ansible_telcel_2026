@@ -1,0 +1,8 @@
+---
+app_port: 8080
+app_env: lab
+app_docroot: /var/www/telcel
+app_admin: noc@telcel.com.mx
+app_version: 1.2.3
+company: TELCEL
+app_server_name: "{{ inventory_hostname }}.telcel.lab"

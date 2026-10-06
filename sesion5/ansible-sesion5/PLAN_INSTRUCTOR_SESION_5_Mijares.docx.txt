@@ -1,0 +1,275 @@
+Plan de Instructor - Sesión 5
+
+Roles, Collections y Ansible Vault | TELCEL | HPE A&PS
+
+Instructor: Mijares | Duración: 3 horas | Modalidad: Lab Offline sin Internet
+
+1. Resumen Ejecutivo para Mijares
+
+Men, esta sesión es la más importante - convierte todo lo de Sesión 3 (tasks/handlers) en Roles reutilizables y mete Vault para secrets.
+
+Perfil de alumnos: Ya vieron Sesión 2 (magic vars, facts.d) y Sesión 3 (handlers offline). Saben que sus containers NO tienen internet ni systemd, por eso todo es file/copy/template/command/debug con validate grep/cat.
+
+Objetivo de Sesión 5: Al final deben tener site.yml que orquesta 2 roles propios (telcel_app y telcel_logrotate) + vault cifrado, todo 100% offline y con 0 changed en segunda corrida.
+
+Entregable del día: Zip con roles/, inventory con vault cifrado, site.yml, ansible.cfg funcionando en control.
+
+
+2. Pre-requisitos - Checklist antes de clase (Mijares)
+
+Hardware/Software:
+[ ] control (af76376983e0) con ansible [core 2.16.16] - verificado, no tocar
+[ ] ansible-lint instalado via pipx en /root/.local/bin/ansible-lint (ya está)
+[ ] 4 containers: servera, serverb (web), serverd (db), control - sin internet a propósito
+[ ] Podman funcionando, inventory/hosts con 10.10.1.11/12/14
+[ ] Proyecto ~/taller-ansible-telcel con estructura:
+    inventory/hosts
+    inventory/group_vars/web/vars.yml y vault.yml (cifrado)
+    roles/ (vacío al inicio)
+    site.yml (vacío al inicio)
+
+Archivos en /mnt/data/docs listos para copiar si algo falla:
+[ ] docs/roles/telcel_app/ y telcel_logrotate/ de respaldo
+[ ] SESION_5 docx y md
+
+Mijares debe probar 1 hora antes:
+ansible all -m ping
+ansible web -a "cat /etc/telcel/app.conf || echo 'no existe aún - OK'"
+ansible-vault view inventory/group_vars/web/vault.yml --vault-password-file ~/.vault_pass
+
+Si falla internet: NORMAL, es parte del diseño offline. No intentar dnf install.
+
+Tiempo total: 180 min
+
+
+3. Agenda 3 Horas - Cronograma
+
+00:00-00:15 (15 min) - Recap y Motivación
+- Mijares: "Sesión 2 vimos magic vars, Sesión 3 handlers con httpd offline sin systemd. Hoy convertimos ese código spaghetti en Roles"
+- Mostrar playbook de 100 líneas de Sesión 3 vs Role de 20 líneas
+- Pregunta gancho: "¿Qué pasa si TELCEL tiene 50 webs? ¿Copian y pegan playbook?"
+- Respuesta: Roles
+
+00:15-00:35 (20 min) - Teoría Roles
+- Estructura: tasks, handlers, templates, defaults, vars, meta
+- defaults vs vars (precedencia)
+- ansible-galaxy role init --offline (enfatizar --offline por containers sin internet)
+- ansible.cfg: roles_path, collections_path, vault_password_file
+- Demo rápido: galaxy init en vivo
+
+00:35-01:20 (45 min) - LAB 5.1 Role telcel_app
+- Objetivo: Convertir LAB 3.1 (app + httpd) a role
+- Pasos que Mijares hace en vivo en control:
+  1. ansible-galaxy role init roles/telcel_app --offline
+  2. Copiar templates de Sesión 3 (telcel-app.conf.j2 3 líneas)
+  3. Mostrar defaults/main.yml vs vars/main.yml
+  4. tasks/main.yml 100% offline (file, copy, template con validate grep -q)
+  5. handlers/
+
+main.yml con listen
+  6. Probar: ansible-playbook playbooks/test-telcel-app.yml --check --diff --limit servera
+  7. Mostrar idempotencia: 2da corrida 0 changed
+
+Pitfalls a mencionar:
+- Si usan validate: httpd -t falla porque no hay binario httpd - usar grep
+- Si usan dnf falla por no internet - no usar dnf
+
+01:20-01:50 (30 min) - LAB 5.2 Role telcel_logrotate
+- Mijares: "Mismo concepto, ahora logrotate sin systemctl"
+- Crear role, templates/logrotate-telcel.j2 sin systemctl reload
+- tasks con validate grep daily
+- Simular rotación con cp/truncate sin binario logrotate
+- Handler show logrotate con cat
+- Probar en all
+
+01:50-02:20 (30 min) - LAB 5.3 Ansible Vault
+- Mijares: "En TELCEL no podemos tener db_password en claro en git"
+- Crear ~/.vault_pass chmod 600
+- ansible-vault create group_vars/web/vault.yml
+- Contenido: vault_db_password, vault_api_key, vault_noc_password
+- Mostrar encrypt_string para 1 variable
+- Modificar templates para usar {{ vault_db_password }}
+- Task con mode 0600 y no_log: true
+- Ejecutar con --vault-password-file
+- Mostrar que sin password falla, con password OK
+- Buena práctica: .gitignore vault, un vault por env
+
+02:20-02:50 (30 min) - LAB 5.4 site.yml Orquestación
+- Mijares crea site.yml que usa 2 roles:
+  hosts: web -> telcel_app + telcel_logrotate
+  hosts: db -> telcel_logrotate
+  hosts: all -> motd base
+- Ejecutar site.yml --check --diff
+- Ejecutar site.yml --diff
+- 2da ejecución debe ser 0 changed - mostrar que handler NO corre si no hay cambios
+- Verificación: ansible web -a "cat /etc/telcel/app.conf" etc
+
+02:50-03:00 (10 min) - Reto Final y Cierre
+- Reto: Crear telcel_base + vault + site.yml
+- Mostrar estructura final esperada
+- Q&A
+- Entregable: zip del proyecto
+- Preview Sesión 6 (si hay): AWX/Tower o CI/CD
+
+Total: 180 min
+
+
+4. Guión para Mijares - Qué decir en cada LAB
+
+LAB 5.1 Guión:
+"Chicos, ¿recuerdan LAB 3.1 donde teníamos 30 líneas en un playbook para configurar httpd? Eso no escala. Ahora lo convertimos en role. Fíjense que en defaults ponemos app_port 8080, que es sobreescribible, y en vars ponemos la lista de directorios que es fija del role. En tasks, todo lo que hicimos en Sesión 3 pero ahora dentro del role. Importante: como estamos sin internet, no podemos usar validate httpd -t porque no hay binario, usamos grep -q Listen, que valida offline. Handlers igual que Sesión 3 con listen."
+
+Comando clave para mostrar en pantalla:
+ansible-galaxy role init roles/telcel_app --offline
+cat roles/telcel_app/tasks/main.yml
+ansible-playbook playbooks/test-telcel-app.yml --diff --limit servera
+
+LAB 5.2 Guión:
+"Mismo patrón para logrotate. En Sesión 3 teníamos postrotate con systemctl reload rsyslog, pero aquí no hay systemd, así que solo hacemos echo a /tmp. La idea es que entiendan el concepto de handler, no que rotemos logs reales. Validate con grep daily."
+
+LAB 5.3 Guión:
+"Ahora lo crítico para TELCEL: secrets. ¿Quién quiere subir su password de DB a Git en claro? Nadie. Para eso Vault. Creamos ~/.vault_pass c
+
+on chmod 600, nunca 777. Luego ansible-vault create. Fíjense que el archivo queda cifrado, con $ANSIBLE_VAULT. En el playbook referenciamos db_password: {{ vault_db_password }}. Y en la task que crea secrets.conf usamos mode 0600 y no_log true para que no salga en logs. Si alguien intenta correr sin --vault-password-file, falla, que es lo que queremos."
+
+Demo impactante:
+cat inventory/group_vars/web/vault.yml -> se ve cifrado
+ansible-vault view ... -> se ve en claro
+ansible-playbook site.yml --diff -> falla sin pass
+ansible-playbook site.yml --vault-password-file ~/.vault_pass --diff -> OK
+
+LAB 5.4 Guión:
+"Finalmente site.yml, que es el orquestador. Ya no tenemos 5 playbooks sueltos, tenemos 1 site.yml que llama roles. Esto es lo que se corre en prod. Y lo más importante: si lo corro 2 veces seguidas, la segunda debe dar 0 changed, eso es idempotencia. Si da changed, algo está mal en su role."
+
+Mostrar:
+ansible-playbook site.yml --vault-password-file ~/.vault_pass --diff  # 1ra changed
+ansible-playbook site.yml --vault-password-file ~/.vault_pass --diff  # 2da 0 changed -> aplauso
+
+
+5. Comandos de Mijares - Copiar y Pegar en Clase
+
+# Setup inicial
+cd ~/taller-ansible-telcel
+cat inventory/hosts
+ansible all -m ping
+
+# LAB 5.1
+ansible-galaxy role init roles/telcel_app --offline
+ls -R roles/telcel_app/
+# Copiar templates de /mnt/data/docs/roles/telcel_app/templates/ a roles/telcel_app/templates/
+ansible-playbook playbooks/test-telcel-app.yml --check --diff --limit servera
+ansible-playbook playbooks/test-telcel-app.yml --diff --limit servera
+ansible web -a "cat /etc/telcel/app.conf"
+
+# LAB 5.2
+ansible-galaxy role init roles/telcel_logrotate --offline
+ansible-playbook playbooks/test-logrotate.yml --diff
+ansible all -a "cat /etc/logrotate.d/telcel"
+
+# LAB 5.3 Vault
+echo "TelcelVault2025" > ~/.vault_pass && chmod 600 ~/.vault_pass
+ansible-vault create --vault-password-file ~/.vault_pass inventory/group_vars/web/vault.yml
+# Escribir: vault_db_password: "SuperSecretDB2025!" etc
+ansible-vault view --vault-password-file ~/.vault_pass inventory/group_vars/web/vault.yml
+ansible-playbook site.yml --vault-password-file ~/.vault_pass --diff --limit servera
+
+# LAB 5.4 site.yml
+cat site.yml
+ansible-playbook site.yml --vault-password-file ~/.vault_pass --check --diff
+ansible-playbook site.yml --vault-password-file ~/.vault_pass --diff
+ansible-playbook site.yml --vault-password-file ~/.vault_pass --diff  # 2da vez 0 changed
+
+# Validación final
+ansible web -a "cat /etc/telcel/app.conf && echo '---' && cat /etc/httpd/conf.d/telcel.conf"
+ansible all -a "cat /etc/logrotate.d/telcel && ls -lh /var/log/telcel/"
+
+# Lint (sin tocar ansible core 2.16.16)
+ansible-lint site.yml
+ansible-lint roles/telcel_app/
+
+
+6. Troubleshooting - Qué hacer si falla (Mijares)
+
+Problema: dnf install httpd falla DNS no internet
+Solución: Esperado, es offline. No usar dnf. Usar file/copy/template. Decir: "Este lab es offline a propósito, en TELCEL prod a veces no hay internet en segment de O&M"
+
+P
+
+roblema: validate httpd -t falla no such file
+Solución: Cambiar a validate: sh -c "grep -q 'Listen' %s && cat %s"
+
+Problema: service: name=httpd state=restarted falla systemd
+Solución: No usar service/systemd. Usar command: cat + debug con listen
+
+Problema: ansible-vault pide password interactivo y se atora
+Solución: Usar --vault-password-file ~/.vault_pass siempre. Verificar chmod 600
+
+Problema: Segunda corrida da changed, no idempotente
+Causa: template con variable que cambia cada vez (ansible_date_time). Quitar esa variable o usar changed_when:false en task de validación
+Solución: En templates no usar ansible_date_time.iso8601 si no es necesario
+
+Problema: Alumno no ve vault porque no tiene ~/.vault_pass
+Solución: Mijares crea uno y lo comparte, o usar --ask-vault-pass y que escriban TelcelVault2025
+
+Problema: Roles no encontrados
+Solución: Verificar ansible.cfg roles_path = ./roles y que estén en ~/taller-ansible-telcel/roles/
+
+
+7. Materiales para Alumnos
+
+Entregar al inicio:
+- Zip con roles/telcel_app y telcel_logrotate vacíos (solo estructura)
+- inventory/hosts de ejemplo
+- ansible.cfg Sesión 5 con vault_password_file
+- Cheat sheet Vault y Roles
+
+No entregar:
+- vault.yml en claro, solo cifrado
+- secrets en claro
+
+Slides (si Mijares usa):
+1. Por qué Roles vs playbook gigante
+2. Estructura de roles
+3. Galaxy offline
+4. Vault flow
+5. site.yml orquestación
+6. Idempotencia
+
+Evaluación rápida (5 min):
+- ¿Qué pasa si 2 templates hacen notify al mismo listen?
+- ¿Por qué no_log:true en task con vault?
+- ¿Qué diferencia defaults vs vars?
+- ¿Cómo validas template sin binario httpd?
+
+
+8. Checklist Cierre para Mijares
+
+Al terminar Sesión 5, cada alumno debe tener:
+
+[ ] roles/telcel_app/ funcionando offline
+[ ] roles/telcel_logrotate/ funcionando offline
+[ ] inventory/group_vars/web/vault.yml cifrado con 3 secrets
+[ ] ~/.vault_pass chmod 600
+[ ] site.yml que orquesta web y db
+[ ] ansible-playbook site.yml --vault-password-file ~/.vault_pass --diff da 0 changed en 2da corrida
+[ ] ansible all -a "cat /etc/telcel/app.conf" funciona
+[ ] ansible-lint site.yml sin errores críticos
+
+Si todo OK, Mijares hace:
+zip -r proyecto-telcel-sesion5-final.zip roles/ inventory/ site.yml ansible.cfg playbooks/
+
+Y anuncia Sesión 6 (si aplica): CI/CD, AWX, o Molecule testing
+
+[DOCX page 1 image attached. Read this image directly to extract content.]
+
+[DOCX page 2 image attached. Read this image directly to extract content.]
+
+[DOCX page 3 image attached. Read this image directly to extract content.]
+
+[DOCX page 4 image attached. Read this image directly to extract content.]
+
+[DOCX page 5 image attached. Read this image directly to extract content.]
+
+[DOCX page 6 image attached. Read this image directly to extract content.]
+
+[DOCX page 7 image attached. Read this image directly to extract content.]

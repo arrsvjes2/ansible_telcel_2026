@@ -1,0 +1,6 @@
+---
+telcel_app_files:
+  - /etc/telcel
+  - /var/www/telcel
+  - /var/log/telcel
+  - /etc/httpd/conf.d

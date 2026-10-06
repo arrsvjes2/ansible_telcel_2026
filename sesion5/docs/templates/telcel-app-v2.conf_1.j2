@@ -1,0 +1,10 @@
+[app]
+host={{ inventory_hostname }}
+port={{ app_port }}
+env={{ app_env }}
+version={{ app_version }}
+datacenter={{ ansible_local.telcel.general.datacenter | default('CDMX-02') }}
+
+[cluster]
+nodes={{ groups['web'] | join(',') }}
+primary_db={{ groups['db'][0] | default('serverd') }}

@@ -1,0 +1,11 @@
+Listen {{ app_port }}
+ServerName {{ app_server_name }}
+DocumentRoot {{ app_docroot }}
+
+<VirtualHost *:{{ app_port }}>
+    ServerAdmin {{ app_admin }}
+    ServerName {{ app_server_name }}
+    DocumentRoot {{ app_docroot }}
+    ErrorLog /var/log/telcel/error.log
+    CustomLog /var/log/telcel/access.log combined
+</VirtualHost>

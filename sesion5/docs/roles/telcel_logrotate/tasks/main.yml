@@ -1,0 +1,21 @@
+---
+- name: Crear dir logs
+  file:
+    path: /var/log/telcel
+    state: directory
+    mode: '0755'
+    owner: "{{ app_user }}"
+
+- name: Crear logs dummy
+  copy:
+    content: "Log {{ inventory_hostname }} {{ ansible_date_time.iso8601 | default('now') }}"
+    dest: "/var/log/telcel/app-{{ inventory_hostname }}.log"
+    mode: '0644'
+
+- name: Instalar logrotate config offline
+  template:
+    src: logrotate-telcel.j2
+    dest: /etc/logrotate.d/telcel
+    mode: '0644'
+    validate: sh -c "grep -q 'daily' %s && cat %s"
+  notify: show logrotate

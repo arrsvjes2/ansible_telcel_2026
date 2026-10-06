@@ -1,0 +1,16 @@
+=========================================
+TELCEL LAB - {{ inventory_hostname }}
+=========================================
+Environment : {{ app_env }}
+Datacenter  : {{ ansible_local.telcel.general.datacenter | default('CDMX-02') }}
+Rol         : {{ ansible_local.telcel.general.telcel_role | default(group_names | join(',')) }}
+Version     : {{ app_version }}
+Managed by  : Ansible - {{ ansible_date_time.date | default('2025-09-15') }}
+IP          : {{ ansible_facts['default_ipv4']['address'] | default(ansible_host | default('10.10.1.11')) }}
+Grupos      : {{ group_names | join(',') }}
+Banner ON   : {{ app_banner_enabled }}
+=========================================
+Acceso restringido - Solo personal autorizado
+Company: {{ company | default('TELCEL') }}
+Host: {{ inventory_hostname }} / {{ inventory_hostname_short }}
+=========================================
