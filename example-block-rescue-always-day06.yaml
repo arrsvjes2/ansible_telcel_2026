@@ -1,0 +1,34 @@
+---
+- name: Example Block Rescue Always
+  hosts: all
+  tasks:
+
+  - block:
+      - name: Ensure exists conffile app.conf 
+        ansible.builtin.template:
+          src: app.conf.j2
+          dest: /etc/telcel/app.conf.new
+          
+      - name: validate conffile
+        ansible.builtin.shell:
+          cmd: grep -q app_port /etc/telcel/app.conf.new
+          
+      - name: copy file app.conf
+        ansible.builtin.copy:
+          src: /etc/telcel/app.conf.new
+          dest: /etc/telcel/app.conf
+          remote_src: yes
+    rescue:
+      - name: remove file conf app.conf.new
+        ansible.builtin.file:
+          path: /etc/telcel/app.conf.new
+          state: absent
+            
+      - name: Print file  
+        ansible.builtin.copy:
+          content: "app_port=8080"
+          dest: /etc/telcel/app.conf
+    always:
+      - name: Print file
+        ansible.builtin.command:
+          cmd: cat /etc/telcel/app.conf
