@@ -1,0 +1,25 @@
+# TELCEL APP Config - {{ inventory_hostname }}
+# Ambiente: {{ app_env | default('lab') }}
+# Fecha: {{ ansible_date_time.iso8601 }}
+
+[app]
+app_port={{ app_port | default(8080) }}
+app_env={{ app_env | default('lab') }}
+app_name=telcel-app
+app_version=1.0.0
+
+[server]
+bind_address=0.0.0.0
+port={{ app_port | default(8080) }}
+workers={{ ansible_processor_vcpus | default(2) }}
+log_level={{ log_level | default('INFO') }}
+
+[database]
+# Ejemplo con hostvars
+db_host={{ db_host | default('localhost') }}
+db_port={{ db_port | default(5432) }}
+db_name=telcel_{{ app_env | default('lab') }}
+
+[logging]
+log_file=/var/log/telcel/app.log
+log_rotate=true
