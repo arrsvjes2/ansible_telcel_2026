@@ -1,0 +1,68 @@
+---
+- name: Deploy TELCEL App - Formato Estandar Legible
+  hosts: web
+  become: true
+  vars:
+    app_port: 8080
+    app_env: lab
+
+  tasks:
+    - name: Inicio del deploy
+      ansible.builtin.debug:
+        msg: "Inicio"
+      tags:
+        - always
+
+    - name: Bloque de deploy con validacion y rollback
+      tags:
+        - deploy
+      block:
+        - name: Desplegar configuracion principal de la app
+          ansible.builtin.template:
+            src: telcel-app.conf.j2
+            dest: /opt/app.conf
+            mode: '0644'
+            backup: true
+            validate: sh -c "grep -q 'app_port' %s"
+          tags:
+            - config
+            - deploy
+
+        - name: Desplegar configuracion de httpd
+          ansible.builtin.template:
+            src: telcel-httpd.conf.j2
+            dest: /opt/telcel.conf
+            mode: '0644'
+            backup: true
+            validate: sh -c "grep -q 'Listen' %s"
+          tags:
+            - config
+            - deploy
+
+        - name: Validar que app_port existe en config
+          ansible.builtin.shell:
+            cmd: grep -q app_port /opt/app.conf && echo "DEPLOY OK"
+          register: deploy_valid
+          changed_when: false
+          failed_when: "'OK' not in deploy_valid.stdout"
+          tags:
+            - validate
+
+      rescue:
+        - name: Rollback - Restaurar backup o crear config minima
+          ansible.builtin.shell:
+            cmd: cp /opt/app.conf.bak /opt/app.conf || echo "app_port=8080" > /opt/app.conf
+          changed_when: true
+
+      always:
+        - name: Mostrar contenido final de app.conf
+          ansible.builtin.shell:
+            cmd: cat /opt/app.conf
+          changed_when: false
+
+    - name: Debug - Mostrar variables del host
+      ansible.builtin.debug:
+        var: hostvars[inventory_hostname]
+      tags:
+        - never
+        - debug
