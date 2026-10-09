@@ -1,0 +1,64 @@
+# {{ ansible_managed }}
+# TELCEL HTTPD Config - {{ inventory_hostname }}
+# Ambiente: {{ app_env | default('lab') }}
+# Fecha: {{ ansible_date_time.iso8601 }}
+
+# Validacion requerida: debe contener 'Listen'
+Listen {{ httpd_port | default(app_port) | default(8080) }}
+
+<VirtualHost *:{{ httpd_port | default(app_port) | default(8080) }}>
+    ServerName {{ inventory_hostname }}
+    ServerAlias {{ ansible_fqdn | default(inventory_hostname) }}
+    
+    # DocumentRoot para app TELCEL
+    DocumentRoot /var/www/telcel-app
+
+    # Logs
+    ErrorLog /var/log/httpd/telcel-error.log
+    CustomLog /var/log/httpd/telcel-access.log combined
+
+    # Proxy a la app en app_port
+    ProxyPreserveHost On
+    ProxyPass / http://127.0.0.1:{{ app_port | default(8080) }}/
+    ProxyPassReverse / http://127.0.0.1:{{ app_port | default(8080) }}/
+
+    <Directory /var/www/telcel-app>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    # Configuracion por ambiente
+{% if app_env == 'prod' %}
+    # Produccion - Seguridad extra
+    ServerTokens Prod
+    ServerSignature Off
+    TraceEnable Off
+    
+    # SSL
+    SSLEngine on
+    SSLCertificateFile /etc/pki/tls/certs/telcel.crt
+    SSLCertificateKeyFile /etc/pki/tls/private/telcel.key
+{% else %}
+    # Lab - Debug habilitado
+    ServerTokens Full
+    LogLevel debug
+{% endif %}
+
+    # Headers TELCEL
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Content-Type-Options "nosniff"
+    Header set X-App-Env "{{ app_env | default('lab') }}"
+
+</VirtualHost>
+
+# Configuracion adicional por grupo
+{% if 'web' in group_names %}
+# Config especifica para grupo web
+<IfModule mod_status.c>
+    <Location /server-status>
+        SetHandler server-status
+        Require ip 10.0.0.0/8
+    </Location>
+</IfModule>
+{% endif %}
