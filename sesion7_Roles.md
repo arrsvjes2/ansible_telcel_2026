@@ -4,6 +4,413 @@
 > **Objetivo:** Ejecutar playbook y rol directamente en el nodo de control (localhost) con `connection: local`
 
 ---
+# Teoría de Roles en Ansible - Documento de Referencia TELCEL
+
+## 1. ¿Por Qué Existe un Rol? - El Problema
+
+### Sin Roles (Playbook Monolito) - Sesión 4-5
+
+```yaml
+---
+- hosts: web
+  tasks:
+    - dnf: name=httpd state=present
+    - template: src=httpd.conf.j2 dest=/etc/httpd/conf.d/app.conf
+    - systemd: name=httpd state=restarted
+
+- hosts: api
+  tasks:
+    - dnf: name=httpd state=present   # ← Copiado/pega de arriba
+    - template: src=httpd.conf.j2 dest=/etc/httpd/conf.d/app.conf # ← Duplicado
+    - systemd: name=httpd state=restarted # ← Duplicado
+```
+
+**Problemas:**
+- Copiar/pegar tareas entre playbooks
+- Si cambias httpd.conf, lo cambias en 10 lugares
+- No reutilizable entre proyectos TELCEL
+- Difícil de testear con `molecule`
+- No versionable en Galaxy
+
+### Con Roles - Sesión 7
+
+```yaml
+---
+- hosts: web
+  roles:
+    - telcel_app
+
+- hosts: api
+  roles:
+    - telcel_app
+```
+
+**Solución:** 1 rol, N usos.
+
+---
+
+## 2. ¿Qué es un Rol?
+
+Un Rol es un **paquete estándar** con estructura fija que agrupa:
+
+| Directorio | Para qué |
+|------------|----------|
+| `tasks/main.yml` | Lógica principal (lo que hace) |
+| `handlers/main.yml` | Acciones al cambiar algo (restart) |
+| `templates/` | Archivos Jinja2 (.j2) |
+| `files/` | Archivos estáticos |
+| `defaults/main.yml` | Variables por defecto (baja prioridad) |
+| `vars/main.yml` | Variables fijas (alta prioridad) |
+| `meta/main.yml` | Dependencias y metadata |
+| `README.md` | Documentación |
+
+**Definición formal:** Un rol es una unidad de automatización reutilizable, versionable y testeable que encapsula una funcionalidad completa (ej: instalar apache, deploy app TELCEL).
+
+---
+
+## 3. ¿Cuándo Usar un Rol?
+
+### Casos de Uso TELCEL
+
+#### a) Infraestructura Repetida
+
+```
+Tienes 50 servidores web en 3 DCs
+→ Rol: telcel_httpd
+→ Lo aplicas a 50 hosts con 1 línea
+```
+
+#### b) Stack Completo (LAMP, LEMP)
+
+```
+Rol: telcel_app_stack
+- Instala httpd
+- Deploy app.conf
+- Configura logrotate
+- Configura monitoreo
+```
+
+#### c) Onboarding de Nuevos Servicios
+
+```
+Nuevo equipo pide "app TELCEL estándar"
+→ Ya tienes rol telcel_app
+→ No escribes playbook desde cero
+```
+
+#### d) Separación de Responsabilidades
+
+```
+Equipo SRE mantiene rol: telcel_hardening
+Equipo App usa rol en su playbook
+→ SRE actualiza hardening sin romper app
+```
+
+#### e) Compliance y Auditoría
+
+```
+Rol: telcel_cis_benchmark
+- Aplica hardening CIS
+- Versionado
+- Auditado
+→ Usado en todos los hosts prod
+```
+
+### ¿Cuándo NO usar rol?
+
+- Playbook de 3 tareas one-shot (ej: reiniciar servicio)
+- Tarea ad-hoc: `ansible web -m shell -a "df -h"`
+- Prototipo rápido que vas a tirar
+
+Regla: Si lo vas a usar 2 veces → haz rol.
+
+---
+
+## 4. Ventajas de Usar Roles
+
+### 4.1 Reutilización
+
+```yaml
+# playbook web
+- hosts: web
+  roles: [telcel_app]
+
+# playbook prod (mismo rol, vars distintas)
+- hosts: prod
+  roles:
+    - role: telcel_app
+      vars:
+        app_port: 9090
+        app_env: prod
+```
+
+1 código, N ambientes.
+
+### 4.2 Mantenibilidad
+
+```
+Cambio en template httpd.conf.j2
+→ Lo cambias en 1 archivo: roles/telcel_app/templates/
+→ Se aplica a todos los playbooks que usan el rol
+
+Sin rol: buscas en 20 playbooks
+```
+
+### 4.3 Versionado y Galaxy
+
+```bash
+# Versionas rol en git
+git tag v1.2.0
+# Publicas en Galaxy
+ansible-galaxy role import
+# Otros equipos lo instalan
+ansible-galaxy role install telcel.telcel_app
+```
+
+### 4.4 Testeable con Molecule
+
+```bash
+cd roles/telcel_app
+molecule init scenario
+molecule test
+# Testea rol en container Rocky 10.1 sin tocar prod
+```
+
+Sin rol no puedes usar Molecule.
+
+### 4.5 Prioridad de Variables Clara
+
+```
+defaults/main.yml (9) < group_vars (12) < vars/main.yml (14) < -e (20)
+
+→ Sabes qué sobreescribe qué
+```
+
+En playbook monolito todo es `vars:` y es caos.
+
+### 4.6 Documentación Estándar
+
+```
+README.md en rol → Galaxy lo muestra automático
+→ Nuevos ingenieros entienden qué hace rol sin leer tasks
+```
+
+### 4.7 Dependencias
+
+```yaml
+# meta/main.yml
+dependencies:
+  - role: telcel_common
+  - role: geerlingguy.httpd
+```
+
+Rol A depende de Rol B → Ansible resuelve orden.
+
+### 4.8 Escalabilidad TELCEL
+
+```
+1000 hosts, 20 apps
+→ 20 roles, no 200 playbooks
+→ Cada rol con su equipo dueño
+```
+
+---
+
+## 5. Dónde Encontrar Roles
+
+### 5.1 Ansible Galaxy - Oficial (galaxy.ansible.com)
+
+```bash
+# Buscar
+ansible-galaxy role search httpd
+ansible-galaxy role search telcel
+
+# Instalar
+ansible-galaxy role install geerlingguy.httpd
+ansible-galaxy role install telcel.telcel_app
+
+# Info
+ansible-galaxy role info geerlingguy.httpd
+```
+
+**Top roles para TELCEL / RHEL:**
+
+| Rol | Uso |
+|-----|-----|
+| `geerlingguy.httpd` | Apache httpd estándar |
+| `geerlingguy.mysql` | MySQL |
+| `geerlingguy.docker` | Docker |
+| `ansible.posix` (collection) | Firewalld, selinux |
+| `community.general` | Módulos varios |
+
+Web: https://galaxy.ansible.com
+
+### 5.2 GitHub - Roles de Comunidad
+
+```bash
+# Clonar directo
+git clone https://github.com/geerlingguy/ansible-role-httpd roles/httpd
+
+# Como submódulo
+git submodule add https://github.com/telcel/ansible-role-telcel_app roles/telcel_app
+```
+
+### 5.3 Roles Internos TELCEL (Recomendado Prod)
+
+```
+GitLab TELCEL:
+git@gitlab.telcel.lab:ansible-roles/telcel_app.git
+git@gitlab.telcel.lab:ansible-roles/telcel_hardening.git
+git@gitlab.telcel.lab:ansible-roles/telcel_monitoring.git
+
+Estructura:
+ansible-roles/
+├── telcel_app/ (tu rol Sesión 7)
+├── telcel_httpd/
+├── telcel_mysql/
+└── telcel_common/ (ntp, usuarios, ssh)
+```
+
+**Ventaja interno:** No dependes de internet, auditado, con credenciales TELCEL.
+
+### 5.4 Collections (Evolución de Roles) - Ansible 2.9+
+
+Los roles ahora vienen en Collections (más modernas):
+
+```bash
+# Collections incluyen roles + módulos + plugins
+ansible-galaxy collection install community.general
+ansible-galaxy collection install ansible.posix
+
+# Usar rol de collection
+- hosts: web
+  roles:
+    - community.general.logrotate
+```
+
+Galaxy Collections: https://galaxy.ansible.com/ui/standalone/roles/
+
+### 5.5 Crear Tu Propio Rol (Sesión 7)
+
+```bash
+ansible-galaxy role init roles/telcel_app --init-path ./roles
+
+# Estructura creada
+# Editas tasks/templates
+# Versionas
+git add roles/telcel_app
+git commit -m "feat: rol telcel_app v1"
+```
+
+---
+
+## 6. Ciclo de Vida de un Rol en TELCEL
+
+```
+1. Diseño
+   → ¿Qué hace? (ej: deploy app TELCEL)
+   → ¿Qué vars necesita? (app_port, app_env)
+
+2. Creación
+   → ansible-galaxy role init roles/telcel_app
+
+3. Desarrollo
+   → tasks/main.yml + templates/*.j2
+   → defaults/main.yml
+
+4. Test Local (en control)
+   → ansible-playbook con connection: local (Sesión 7 control)
+   → molecule test (container Rocky 10.1)
+
+5. Lint
+   → podman run ... ghcr.io/ansible/ansible-lint:latest roles/telcel_app
+
+6. Versionado
+   → git tag v1.0.0
+   → CHANGELOG.md
+
+7. Publicación
+   → Interno: push a GitLab TELCEL
+   → Público: ansible-galaxy role import
+
+8. Uso
+   → Otros playbooks: roles: - telcel_app
+   → ansible-galaxy role install telcel.telcel_app
+
+9. Mantenimiento
+   → Bugfix → v1.0.1
+   → Feature → v1.1.0
+```
+
+---
+
+## 7. Ejemplo Real TELCEL - Arquitectura con Roles
+
+```
+Proyecto: taller-ansible-telcel/
+
+├── ansible.cfg
+├── inventory/
+│   ├── prod.ini
+│   └── lab.ini
+├── group_vars/
+│   ├── all.yml (ansible_python_interpreter)
+│   ├── web.yml (app_port: 8080)
+│   └── prod.yml (app_env: prod)
+├── roles/
+│   ├── telcel_common/      # Equipo SRE
+│   │   └── tasks: ntp, usuarios, ssh hardening
+│   ├── telcel_httpd/       # Equipo Web
+│   │   └── tasks: httpd + mod_ssl
+│   ├── telcel_app/         # Sesión 7 - Tu rol
+│   │   └── tasks: deploy app.conf + httpd conf
+│   └── telcel_monitoring/  # Equipo Monitoreo
+│       └── tasks: zabbix agent
+└── playbooks/
+    ├── site.yml            # Usa todos los roles
+    ├── web.yml
+    └── session7-control.yml # Solo telcel_app en control local
+```
+
+```yaml
+# site.yml - Playbook maestro TELCEL
+---
+- name: Common para todos
+  hosts: all
+  roles:
+    - telcel_common
+
+- name: Web stack
+  hosts: web
+  roles:
+    - telcel_httpd
+    - telcel_app
+    - telcel_monitoring
+```
+
+---
+
+## 8. Resumen - ¿Por Qué Rol?
+
+| Sin Rol | Con Rol |
+|---------|---------|
+| Copiar/pegar | Reutilizar |
+| 20 playbooks con mismo código | 1 rol, 20 usos |
+| Cambio en 20 archivos | Cambio en 1 archivo |
+| No testeable | Testeable con Molecule |
+| No versionable | Versionable (git tag) |
+| Difícil onboarding | `ansible-galaxy install` |
+
+**Regla de oro TELCEL:**
+
+> Si lo usas más de 1 vez, o lo mantiene más de 1 equipo → hazlo rol.
+
+---
+
+> Documento Teoría Roles - TELCEL Lab - Sesión 7
+> Rocky 10.1 + Ansible 2.16.16 + Galaxy
+
+
 
 ## 1. Estructura Final para Control
 
